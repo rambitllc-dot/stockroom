@@ -1,3 +1,4 @@
+// v3.0 - signup fix
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ── Config ────────────────────────────────────────────────────────────────────
