@@ -224,6 +224,7 @@ function AuthScreen({ onAuth }) {
         // if signup returns a session directly, use it; otherwise sign in
         let session = signupData;
         if (!signupData.access_token) {
+          await new Promise(r => setTimeout(r, 1500));
           session = await auth.signIn(email, password);
         }
         auth.save(session);
