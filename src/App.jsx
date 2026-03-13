@@ -10,7 +10,7 @@ const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
 const PRICE_MONTHLY = import.meta.env.VITE_PRICE_MONTHLY || 'price_1TAYDJAfBHqpcsRg3QIKBgVI';
 const PRICE_ANNUAL = import.meta.env.VITE_PRICE_ANNUAL || 'price_1TAYE8AfBHqpcsRgoWkO9P5Z';
 const PRICE_LIFETIME = import.meta.env.VITE_PRICE_LIFETIME || 'price_1TAYEZAfBHqpcsRgV1S4KfmZ';
-const ADMIN_EMAIL = 'rambitllc@gmail.com'; // ← change to your email
+const ADMIN_EMAIL = 'admin@rambitllc.com'; // ← change to your email
 
 // ── Supabase Auth ─────────────────────────────────────────────────────────────
 const auth = {
@@ -310,7 +310,7 @@ function getSubStatus(tenant) {
   if (tenant.status === 'trial') {
     const trialEnd = new Date(tenant.trial_ends_at);
     const daysLeft = Math.ceil((trialEnd - new Date()) / (1000 * 60 * 60 * 24));
-    if (daysLeft > 0) return 'trial';
+    if (daysLeft >= 0) return 'trial';
     return 'expired';
   }
   if (tenant.status === 'past_due') return 'past_due';
@@ -382,7 +382,8 @@ function AuthScreen({ onAuth }) {
         await auth.resetPassword(email);
         setSuccess('Password reset email sent! Check your inbox.');
       } else if (mode === 'signup') {
-        const session = await auth.signUp(email, password, bizName);
+        await auth.signUp(email, password, bizName);
+        const session = await auth.signIn(email, password);
         auth.save(session);
         onAuth(session);
       } else {
