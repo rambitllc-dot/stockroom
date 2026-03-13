@@ -1,82 +1,182 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-// ── Supabase config ───────────────────────────────────────────────────────────
-const SUPABASE_URL = 'https://vugqkfdweyhdtvovvnci.supabase.co';
+// ── Config ────────────────────────────────────────────────────────────────────
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || 'https://vugqkfdweyhdtvovvnci.supabase.co';
 const SUPABASE_KEY =
+  import.meta.env.VITE_SUPABASE_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1Z3FrZmR3ZXloZHR2b3Z2bmNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMjk0MDgsImV4cCI6MjA4ODkwNTQwOH0.FsLAnELsq1G9ZepOR1ncbuCpDcvHU_0OtVk3aYYwsD4';
+const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+const PRICE_MONTHLY = import.meta.env.VITE_PRICE_MONTHLY || 'price_1TAYDJAfBHqpcsRg3QIKBgVI';
+const PRICE_ANNUAL = import.meta.env.VITE_PRICE_ANNUAL || 'price_1TAYE8AfBHqpcsRgoWkO9P5Z';
+const PRICE_LIFETIME = import.meta.env.VITE_PRICE_LIFETIME || 'price_1TAYEZAfBHqpcsRgV1S4KfmZ';
+const ADMIN_EMAIL = 'rambitllc@gmail.com'; // ← change to your email
 
-const sb = {
-  headers: {
-    'Content-Type': 'application/json',
-    apikey: SUPABASE_KEY,
-    Authorization: `Bearer ${SUPABASE_KEY}`,
+// ── Supabase Auth ─────────────────────────────────────────────────────────────
+const auth = {
+  async signUp(email, password, businessName) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+      body: JSON.stringify({ email, password, data: { business_name: businessName } }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    return d;
   },
+  async signIn(email, password) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+      body: JSON.stringify({ email, password }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    return d;
+  },
+  async signOut(token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  },
+  async getUser(token) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    return d;
+  },
+  async resetPassword(email) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+      body: JSON.stringify({ email }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    return d;
+  },
+  save(session) {
+    localStorage.setItem('sb_session', JSON.stringify(session));
+  },
+  load() {
+    try {
+      return JSON.parse(localStorage.getItem('sb_session'));
+    } catch {
+      return null;
+    }
+  },
+  clear() {
+    localStorage.removeItem('sb_session');
+  },
+};
 
-  // ── items ──
-  async getItems() {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/items?order=created_at.desc`, {
-      headers: this.headers,
+// ── Supabase DB ───────────────────────────────────────────────────────────────
+const db = {
+  headers(token) {
+    return {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${token}`,
+    };
+  },
+  async getTenant(token, userId) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/tenants?owner_id=eq.${userId}&limit=1`, {
+      headers: this.headers(token),
     });
     if (!r.ok) throw new Error(await r.text());
     const rows = await r.json();
-    return rows.map(dbToItem);
+    return rows[0] || null;
   },
-  async upsertItem(item) {
-    const row = itemToDb(item);
+  async createTenant(token, userId, email, businessName) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/tenants`, {
+      method: 'POST',
+      headers: { ...this.headers(token), Prefer: 'return=representation' },
+      body: JSON.stringify({
+        owner_id: userId,
+        email,
+        business_name: businessName,
+        status: 'trial',
+        plan: 'trial',
+      }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const [row] = await r.json();
+    return row;
+  },
+  async getAllTenants(token) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/tenants?order=created_at.desc`, {
+      headers: this.headers(token),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async updateTenantStatus(token, tenantId, status) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tenantId}`, {
+      method: 'PATCH',
+      headers: { ...this.headers(token), Prefer: 'return=representation' },
+      body: JSON.stringify({ status }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async getItems(token, tenantId) {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/items?tenant_id=eq.${tenantId}&order=created_at.desc`,
+      { headers: this.headers(token) },
+    );
+    if (!r.ok) throw new Error(await r.text());
+    return (await r.json()).map(dbToItem);
+  },
+  async upsertItem(token, item, tenantId) {
+    const row = { ...itemToDb(item), tenant_id: tenantId };
     const r = await fetch(`${SUPABASE_URL}/rest/v1/items`, {
       method: 'POST',
-      headers: { ...this.headers, Prefer: 'resolution=merge-duplicates,return=representation' },
+      headers: {
+        ...this.headers(token),
+        Prefer: 'resolution=merge-duplicates,return=representation',
+      },
       body: JSON.stringify(row),
     });
     if (!r.ok) throw new Error(await r.text());
     const [saved] = await r.json();
     return dbToItem(saved);
   },
-  async deleteItem(id) {
+  async deleteItem(token, id) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/items?id=eq.${id}`, {
       method: 'DELETE',
-      headers: this.headers,
+      headers: this.headers(token),
     });
     if (!r.ok) throw new Error(await r.text());
   },
-
-  // ── custom fields ──
-  async getFields() {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/custom_fields?order=sort_order.asc`, {
-      headers: this.headers,
-    });
+  async getFields(token, tenantId) {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/custom_fields?tenant_id=eq.${tenantId}&order=sort_order.asc`,
+      { headers: this.headers(token) },
+    );
     if (!r.ok) throw new Error(await r.text());
     return (await r.json()).map(dbToField);
   },
-  async upsertField(field) {
-    const row = fieldToDb(field);
+  async replaceFields(token, tenantId, fields) {
+    await fetch(`${SUPABASE_URL}/rest/v1/custom_fields?tenant_id=eq.${tenantId}`, {
+      method: 'DELETE',
+      headers: this.headers(token),
+    });
+    if (!fields.length) return [];
+    const rows = fields.map((f, i) => ({ ...fieldToDb(f), tenant_id: tenantId, sort_order: i }));
     const r = await fetch(`${SUPABASE_URL}/rest/v1/custom_fields`, {
       method: 'POST',
-      headers: { ...this.headers, Prefer: 'resolution=merge-duplicates,return=representation' },
-      body: JSON.stringify(row),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    const [saved] = await r.json();
-    return dbToField(saved);
-  },
-  async deleteField(id) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/custom_fields?id=eq.${id}`, {
-      method: 'DELETE',
-      headers: this.headers,
-    });
-    if (!r.ok) throw new Error(await r.text());
-  },
-  async replaceFields(fields) {
-    // delete all then re-insert with updated sort order
-    await fetch(`${SUPABASE_URL}/rest/v1/custom_fields`, {
-      method: 'DELETE',
-      headers: { ...this.headers, Prefer: 'return=minimal' },
-    });
-    if (fields.length === 0) return [];
-    const rows = fields.map((f, i) => fieldToDb({ ...f, sort_order: i }));
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/custom_fields`, {
-      method: 'POST',
-      headers: { ...this.headers, Prefer: 'return=representation' },
+      headers: { ...this.headers(token), Prefer: 'return=representation' },
       body: JSON.stringify(rows),
     });
     if (!r.ok) throw new Error(await r.text());
@@ -84,7 +184,19 @@ const sb = {
   },
 };
 
-// ── DB row ↔ app object converters ───────────────────────────────────────────
+// ── Stripe checkout ───────────────────────────────────────────────────────────
+async function startCheckout(token, priceId, stripeCustomerId, email, tenantId) {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ priceId, customerId: stripeCustomerId, email, tenantId }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+// ── Converters ────────────────────────────────────────────────────────────────
 function itemToDb(item) {
   const {
     name,
@@ -103,7 +215,6 @@ function itemToDb(item) {
     createdAt,
     ...rest
   } = item;
-  // everything not a core field goes into custom_data jsonb
   const custom_data = {};
   Object.keys(rest).forEach((k) => {
     if (!['_t'].includes(k)) custom_data[k] = rest[k];
@@ -167,11 +278,10 @@ function dbToField(row) {
   };
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 10);
 const today = () => new Date().toISOString().split('T')[0];
 const CATEGORIES = ['Tires', 'Other'];
-
 const CORE_FIELDS = [
   { key: 'name', label: 'Product Name', type: 'text', required: true, core: true },
   { key: 'description', label: 'Description', type: 'text', required: false, core: true },
@@ -193,7 +303,32 @@ const CORE_FIELDS = [
   { key: 'notes', label: 'Notes', type: 'textarea', required: false, core: true },
 ];
 
-// ── Backdrop ──────────────────────────────────────────────────────────────────
+// ── Subscription status helpers ───────────────────────────────────────────────
+function getSubStatus(tenant) {
+  if (!tenant) return 'none';
+  if (tenant.status === 'active' || tenant.plan === 'lifetime') return 'active';
+  if (tenant.status === 'trial') {
+    const trialEnd = new Date(tenant.trial_ends_at);
+    const daysLeft = Math.ceil((trialEnd - new Date()) / (1000 * 60 * 60 * 24));
+    if (daysLeft > 0) return 'trial';
+    return 'expired';
+  }
+  if (tenant.status === 'past_due') return 'past_due';
+  if (tenant.status === 'cancelled') return 'cancelled';
+  return 'expired';
+}
+function trialDaysLeft(tenant) {
+  if (!tenant?.trial_ends_at) return 0;
+  return Math.max(
+    0,
+    Math.ceil((new Date(tenant.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24)),
+  );
+}
+function canWrite(subStatus) {
+  return ['active', 'trial'].includes(subStatus);
+}
+
+// ── Shared styles ─────────────────────────────────────────────────────────────
 const Backdrop = ({ onClick }) => (
   <div
     onClick={onClick}
@@ -206,6 +341,918 @@ const Backdrop = ({ onClick }) => (
     }}
   />
 );
+const iS = {
+  background: '#1a1a1a',
+  border: '1px solid #2d2d2d',
+  borderRadius: 8,
+  padding: '10px 12px',
+  color: '#f3f4f6',
+  fontSize: 14,
+  outline: 'none',
+  fontFamily: 'monospace',
+  width: '100%',
+  transition: 'border-color .2s',
+};
+const lS = {
+  fontSize: 11,
+  color: '#9ca3af',
+  textTransform: 'uppercase',
+  letterSpacing: 1,
+  fontFamily: 'monospace',
+  marginBottom: 4,
+  display: 'block',
+};
+
+// ── Auth Screen ───────────────────────────────────────────────────────────────
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState('login'); // login | signup | reset
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [bizName, setBizName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handle = async () => {
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      if (mode === 'reset') {
+        await auth.resetPassword(email);
+        setSuccess('Password reset email sent! Check your inbox.');
+      } else if (mode === 'signup') {
+        const session = await auth.signUp(email, password, bizName);
+        auth.save(session);
+        onAuth(session);
+      } else {
+        const session = await auth.signIn(email, password);
+        auth.save(session);
+        onAuth(session);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#0a0a0a',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div style={{ marginBottom: 32, textAlign: 'center' }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: '#f59e0b',
+            letterSpacing: 4,
+            fontFamily: 'monospace',
+            marginBottom: 4,
+          }}
+        >
+          RETAIL
+        </div>
+        <div
+          style={{
+            fontFamily: "'Bebas Neue',sans-serif",
+            fontSize: 48,
+            color: '#f3f4f6',
+            letterSpacing: 3,
+            lineHeight: 1,
+          }}
+        >
+          STOCKROOM
+        </div>
+        <div style={{ color: '#4b5563', fontSize: 12, fontFamily: 'monospace', marginTop: 6 }}>
+          Tire Shop Inventory Management
+        </div>
+      </div>
+
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 400,
+          background: '#111',
+          border: '1px solid #2a2a2a',
+          borderRadius: 20,
+          padding: 28,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "'Bebas Neue',sans-serif",
+            fontSize: 22,
+            color: '#f59e0b',
+            letterSpacing: 2,
+            marginBottom: 20,
+          }}
+        >
+          {mode === 'login' ? 'SIGN IN' : mode === 'signup' ? 'CREATE ACCOUNT' : 'RESET PASSWORD'}
+        </div>
+
+        <div style={{ display: 'grid', gap: 14 }}>
+          {mode === 'signup' && (
+            <div>
+              <label style={lS}>Business Name *</label>
+              <input
+                value={bizName}
+                onChange={(e) => setBizName(e.target.value)}
+                placeholder="e.g. Joe's Tire Shop"
+                style={iS}
+                onFocus={(e) => (e.target.style.borderColor = '#f59e0b')}
+                onBlur={(e) => (e.target.style.borderColor = '#2d2d2d')}
+              />
+            </div>
+          )}
+          <div>
+            <label style={lS}>Email *</label>
+            <input
+              type='email'
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder='you@example.com'
+              style={iS}
+              onFocus={(e) => (e.target.style.borderColor = '#f59e0b')}
+              onBlur={(e) => (e.target.style.borderColor = '#2d2d2d')}
+            />
+          </div>
+          {mode !== 'reset' && (
+            <div>
+              <label style={lS}>Password *</label>
+              <input
+                type='password'
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder='••••••••'
+                style={iS}
+                onFocus={(e) => (e.target.style.borderColor = '#f59e0b')}
+                onBlur={(e) => (e.target.style.borderColor = '#2d2d2d')}
+              />
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: '10px 14px',
+              background: '#130000',
+              border: '1px solid #7f1d1d',
+              borderRadius: 8,
+              color: '#fca5a5',
+              fontSize: 12,
+              fontFamily: 'monospace',
+            }}
+          >
+            {error}
+          </div>
+        )}
+        {success && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: '10px 14px',
+              background: '#052e16',
+              border: '1px solid #14532d',
+              borderRadius: 8,
+              color: '#86efac',
+              fontSize: 12,
+              fontFamily: 'monospace',
+            }}
+          >
+            {success}
+          </div>
+        )}
+
+        {mode === 'signup' && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: '10px 14px',
+              background: '#0a1628',
+              border: '1px solid #1e3a5f',
+              borderRadius: 8,
+              color: '#7dd3fc',
+              fontSize: 11,
+              fontFamily: 'monospace',
+            }}
+          >
+            🎉 14-day free trial — no credit card required
+          </div>
+        )}
+
+        <button
+          onClick={handle}
+          disabled={loading}
+          style={{
+            width: '100%',
+            marginTop: 20,
+            padding: '13px',
+            background: loading ? '#92400e' : '#f59e0b',
+            border: 'none',
+            borderRadius: 10,
+            color: '#000',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontFamily: "'Bebas Neue',sans-serif",
+            fontSize: 18,
+            letterSpacing: 1,
+          }}
+        >
+          {loading
+            ? 'PLEASE WAIT…'
+            : mode === 'login'
+              ? 'SIGN IN'
+              : mode === 'signup'
+                ? 'START FREE TRIAL'
+                : 'SEND RESET EMAIL'}
+        </button>
+
+        <div
+          style={{
+            marginTop: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            alignItems: 'center',
+          }}
+        >
+          {mode === 'login' && (
+            <>
+              <button
+                onClick={() => {
+                  setMode('signup');
+                  setError('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#6b7280',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                }}
+              >
+                Don't have an account? Sign up free
+              </button>
+              <button
+                onClick={() => {
+                  setMode('reset');
+                  setError('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#4b5563',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                }}
+              >
+                Forgot password?
+              </button>
+            </>
+          )}
+          {mode !== 'login' && (
+            <button
+              onClick={() => {
+                setMode('login');
+                setError('');
+                setSuccess('');
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#6b7280',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: 'monospace',
+              }}
+            >
+              Back to sign in
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Pricing Screen ────────────────────────────────────────────────────────────
+function PricingScreen({ tenant, token, onClose, expired }) {
+  const [loading, setLoading] = useState(null);
+  const [error, setError] = useState('');
+
+  const plans = [
+    {
+      id: PRICE_MONTHLY,
+      name: 'Monthly',
+      price: '$99',
+      period: '/month',
+      desc: 'Billed monthly, cancel anytime',
+      color: '#38bdf8',
+    },
+    {
+      id: PRICE_ANNUAL,
+      name: 'Annual',
+      price: '$999',
+      period: '/year',
+      desc: 'Save 16% vs monthly',
+      color: '#4ade80',
+      badge: 'BEST VALUE',
+    },
+    {
+      id: PRICE_LIFETIME,
+      name: 'Lifetime',
+      price: '$299',
+      period: 'once',
+      desc: 'Pay once, use forever',
+      color: '#f59e0b',
+      badge: 'ONE TIME',
+    },
+  ];
+
+  const checkout = async (priceId) => {
+    setLoading(priceId);
+    setError('');
+    try {
+      const { url } = await startCheckout(
+        token,
+        priceId,
+        tenant?.stripe_customer_id,
+        tenant?.email,
+        tenant?.id,
+      );
+      window.location.href = url;
+    } catch (e) {
+      setError(e.message);
+      setLoading(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#0a0a0a',
+        padding: 24,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        {expired ? (
+          <>
+            <div
+              style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                fontSize: 32,
+                color: '#ef4444',
+                letterSpacing: 2,
+              }}
+            >
+              TRIAL EXPIRED
+            </div>
+            <div style={{ color: '#6b7280', fontSize: 13, fontFamily: 'monospace', marginTop: 6 }}>
+              Choose a plan to continue using Stockroom
+            </div>
+          </>
+        ) : (
+          <>
+            <div
+              style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                fontSize: 32,
+                color: '#f59e0b',
+                letterSpacing: 2,
+              }}
+            >
+              CHOOSE YOUR PLAN
+            </div>
+            <div style={{ color: '#6b7280', fontSize: 13, fontFamily: 'monospace', marginTop: 6 }}>
+              Unlock full access to Stockroom
+            </div>
+          </>
+        )}
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 480, display: 'grid', gap: 12 }}>
+        {plans.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              background: '#111',
+              border: `1px solid ${loading === p.id ? '#f59e0b' : '#2a2a2a'}`,
+              borderRadius: 16,
+              padding: 20,
+              position: 'relative',
+            }}
+          >
+            {p.badge && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: -10,
+                  right: 16,
+                  padding: '3px 10px',
+                  background: '#f59e0b',
+                  borderRadius: 20,
+                  fontSize: 10,
+                  color: '#000',
+                  fontFamily: "'Bebas Neue',sans-serif",
+                  letterSpacing: 1,
+                }}
+              >
+                {p.badge}
+              </span>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div
+                  style={{
+                    fontFamily: "'Bebas Neue',sans-serif",
+                    fontSize: 20,
+                    color: '#f3f4f6',
+                    letterSpacing: 1,
+                  }}
+                >
+                  {p.name}
+                </div>
+                <div
+                  style={{ color: '#6b7280', fontSize: 11, fontFamily: 'monospace', marginTop: 2 }}
+                >
+                  {p.desc}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span
+                  style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 32, color: p.color }}
+                >
+                  {p.price}
+                </span>
+                <span
+                  style={{ color: '#6b7280', fontSize: 11, fontFamily: 'monospace', marginLeft: 4 }}
+                >
+                  {p.period}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => checkout(p.id)}
+              disabled={!!loading}
+              style={{
+                width: '100%',
+                marginTop: 14,
+                padding: '11px',
+                background: loading === p.id ? '#92400e' : '#1a1a1a',
+                border: `1px solid ${p.color}`,
+                borderRadius: 10,
+                color: p.color,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontFamily: "'Bebas Neue',sans-serif",
+                fontSize: 16,
+                letterSpacing: 1,
+              }}
+            >
+              {loading === p.id ? 'REDIRECTING TO PAYMENT…' : `GET ${p.name.toUpperCase()} PLAN`}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {error && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: '10px 14px',
+            background: '#130000',
+            border: '1px solid #7f1d1d',
+            borderRadius: 8,
+            color: '#fca5a5',
+            fontSize: 12,
+            fontFamily: 'monospace',
+            maxWidth: 480,
+            width: '100%',
+          }}
+        >
+          {error}
+        </div>
+      )}
+      {!expired && onClose && (
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 20,
+            background: 'transparent',
+            border: 'none',
+            color: '#4b5563',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontFamily: 'monospace',
+          }}
+        >
+          ← Back to inventory
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Payment Reminder Popup ────────────────────────────────────────────────────
+function PaymentReminder({ tenant, subStatus, onUpgrade, onDismiss }) {
+  const daysLeft = trialDaysLeft(tenant);
+  const isPastDue = subStatus === 'past_due';
+
+  if (subStatus === 'active') return null;
+
+  const msg = isPastDue
+    ? {
+        title: 'PAYMENT FAILED',
+        body: "Your last payment didn't go through. Update your payment method to keep access.",
+        color: '#ef4444',
+        border: '#7f1d1d',
+        bg: '#130000',
+      }
+    : daysLeft <= 3
+      ? {
+          title: `${daysLeft} DAYS LEFT IN TRIAL`,
+          body: 'Your free trial is ending soon. Upgrade now to keep your inventory data.',
+          color: '#f59e0b',
+          border: '#78350f',
+          bg: '#130a00',
+        }
+      : null;
+
+  if (!msg) return null;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        bottom: 90,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 'calc(100% - 32px)',
+        maxWidth: 448,
+        background: msg.bg,
+        border: `1px solid ${msg.border}`,
+        borderRadius: 14,
+        padding: 16,
+        zIndex: 40,
+        boxShadow: '0 8px 32px rgba(0,0,0,.6)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontFamily: "'Bebas Neue',sans-serif",
+              fontSize: 16,
+              color: msg.color,
+              letterSpacing: 1,
+              marginBottom: 4,
+            }}
+          >
+            {msg.title}
+          </div>
+          <div style={{ color: '#9ca3af', fontSize: 12, fontFamily: 'monospace', lineHeight: 1.4 }}>
+            {msg.body}
+          </div>
+        </div>
+        <button
+          onClick={onDismiss}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#4b5563',
+            cursor: 'pointer',
+            fontSize: 16,
+            marginLeft: 8,
+            flexShrink: 0,
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      <button
+        onClick={onUpgrade}
+        style={{
+          width: '100%',
+          marginTop: 12,
+          padding: '10px',
+          background: msg.color,
+          border: 'none',
+          borderRadius: 8,
+          color: '#000',
+          cursor: 'pointer',
+          fontFamily: "'Bebas Neue',sans-serif",
+          fontSize: 15,
+          letterSpacing: 1,
+        }}
+      >
+        UPGRADE NOW
+      </button>
+    </div>
+  );
+}
+
+// ── Admin Dashboard ───────────────────────────────────────────────────────────
+function AdminDashboard({ token, onClose }) {
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    db.getAllTenants(token)
+      .then(setTenants)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const statusColor = (s) =>
+    s === 'active'
+      ? '#4ade80'
+      : s === 'trial'
+        ? '#38bdf8'
+        : s === 'past_due'
+          ? '#f59e0b'
+          : '#ef4444';
+
+  const filtered = tenants.filter(
+    (t) =>
+      t.business_name?.toLowerCase().includes(search.toLowerCase()) ||
+      t.email?.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const stats = {
+    total: tenants.length,
+    active: tenants.filter((t) => t.status === 'active').length,
+    trial: tenants.filter((t) => t.status === 'trial').length,
+    pastDue: tenants.filter((t) => t.status === 'past_due').length,
+  };
+
+  return (
+    <>
+      <Backdrop onClick={onClose} />
+      <div style={{ position: 'fixed', inset: 0, zIndex: 60, overflowY: 'auto', padding: 16 }}>
+        <div
+          style={{
+            maxWidth: 600,
+            margin: '0 auto',
+            background: '#111',
+            border: '1px solid #2a2a2a',
+            borderRadius: 20,
+            padding: 24,
+            boxShadow: '0 25px 60px rgba(0,0,0,.8)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 20,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "'Bebas Neue',sans-serif",
+                fontSize: 24,
+                color: '#f59e0b',
+                letterSpacing: 2,
+              }}
+            >
+              ADMIN DASHBOARD
+            </span>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#6b7280',
+                fontSize: 20,
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Stats */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4,1fr)',
+              gap: 8,
+              marginBottom: 20,
+            }}
+          >
+            {[
+              { label: 'Total', val: stats.total, color: '#f3f4f6' },
+              { label: 'Active', val: stats.active, color: '#4ade80' },
+              { label: 'Trial', val: stats.trial, color: '#38bdf8' },
+              { label: 'Past Due', val: stats.pastDue, color: '#f59e0b' },
+            ].map((s) => (
+              <div
+                key={s.label}
+                style={{
+                  background: '#0d0d0d',
+                  border: '1px solid #1e1e1e',
+                  borderRadius: 12,
+                  padding: 12,
+                  textAlign: 'center',
+                }}
+              >
+                <div
+                  style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 24, color: s.color }}
+                >
+                  {s.val}
+                </div>
+                <div style={{ fontSize: 10, color: '#4b5563', fontFamily: 'monospace' }}>
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <input
+            placeholder='🔍 Search customers…'
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: '100%',
+              background: '#0d0d0d',
+              border: '1px solid #2d2d2d',
+              borderRadius: 10,
+              padding: '10px 14px',
+              color: '#f3f4f6',
+              fontSize: 13,
+              outline: 'none',
+              marginBottom: 12,
+              fontFamily: 'monospace',
+            }}
+          />
+
+          {loading ? (
+            <div
+              style={{
+                textAlign: 'center',
+                color: '#4b5563',
+                padding: 40,
+                fontFamily: 'monospace',
+              }}
+            >
+              Loading customers…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div
+              style={{
+                textAlign: 'center',
+                color: '#4b5563',
+                padding: 40,
+                fontFamily: 'monospace',
+              }}
+            >
+              No customers found
+            </div>
+          ) : (
+            filtered.map((t) => (
+              <div
+                key={t.id}
+                style={{
+                  background: '#161616',
+                  border: '1px solid #2a2a2a',
+                  borderRadius: 12,
+                  padding: '12px 16px',
+                  marginBottom: 8,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        color: '#f3f4f6',
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {t.business_name || 'Unnamed'}
+                    </div>
+                    <div
+                      style={{
+                        color: '#6b7280',
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        marginTop: 2,
+                      }}
+                    >
+                      {t.email}
+                    </div>
+                    <div
+                      style={{
+                        color: '#4b5563',
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                        marginTop: 2,
+                      }}
+                    >
+                      Plan: {t.plan || 'trial'} · Joined: {t.created_at?.split('T')[0]}
+                      {t.status === 'trial' && ` · ${trialDaysLeft(t)} days left`}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                      gap: 6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: 20,
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                        background: '#0d0d0d',
+                        color: statusColor(t.status),
+                        border: `1px solid ${statusColor(t.status)}33`,
+                      }}
+                    >
+                      {t.status?.toUpperCase()}
+                    </span>
+                    {t.status !== 'active' && (
+                      <button
+                        onClick={async () => {
+                          await db.updateTenantStatus(token, t.id, 'active');
+                          setTenants((prev) =>
+                            prev.map((x) => (x.id === t.id ? { ...x, status: 'active' } : x)),
+                          );
+                        }}
+                        style={{
+                          padding: '3px 10px',
+                          background: '#052e16',
+                          border: '1px solid #14532d',
+                          borderRadius: 6,
+                          color: '#4ade80',
+                          cursor: 'pointer',
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        Activate
+                      </button>
+                    )}
+                    {t.status === 'active' && (
+                      <button
+                        onClick={async () => {
+                          await db.updateTenantStatus(token, t.id, 'cancelled');
+                          setTenants((prev) =>
+                            prev.map((x) => (x.id === t.id ? { ...x, status: 'cancelled' } : x)),
+                          );
+                        }}
+                        style={{
+                          padding: '3px 10px',
+                          background: '#1a0000',
+                          border: '1px solid #7f1d1d',
+                          borderRadius: 6,
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        Suspend
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
 
 // ── Scanner ───────────────────────────────────────────────────────────────────
 function Scanner({ onDetect, onClose }) {
@@ -421,29 +1468,7 @@ function Scanner({ onDetect, onClose }) {
   );
 }
 
-// ── Field component (must be outside ItemForm to prevent focus loss) ──────────
-const iS = {
-  background: '#1a1a1a',
-  border: '1px solid #2d2d2d',
-  borderRadius: 8,
-  padding: '10px 12px',
-  color: '#f3f4f6',
-  fontSize: 14,
-  outline: 'none',
-  fontFamily: 'monospace',
-  width: '100%',
-  transition: 'border-color .2s',
-};
-const lS = {
-  fontSize: 11,
-  color: '#9ca3af',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontFamily: 'monospace',
-  marginBottom: 4,
-  display: 'block',
-};
-
+// ── Field Component ───────────────────────────────────────────────────────────
 function Field({ f, value, onChange }) {
   const handleFocus = (e) => (e.target.style.borderColor = '#f59e0b');
   const handleBlur = (e) => (e.target.style.borderColor = '#2d2d2d');
@@ -567,26 +1592,26 @@ function ItemForm({ initial, customFields, onSave, onCancel, title, saving }) {
             </button>
           </div>
           <div style={{ display: 'grid', gap: 14 }}>
-            <Field f={CORE_FIELDS[0]} value={form['name']} onChange={set} />
-            <Field f={CORE_FIELDS[1]} value={form['description']} onChange={set} />
+            <Field f={CORE_FIELDS[0]} value={form.name} onChange={set} />
+            <Field f={CORE_FIELDS[1]} value={form.description} onChange={set} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field f={CORE_FIELDS[2]} value={form['sku']} onChange={set} />
-              <Field f={CORE_FIELDS[3]} value={form['category']} onChange={set} />
+              <Field f={CORE_FIELDS[2]} value={form.sku} onChange={set} />
+              <Field f={CORE_FIELDS[3]} value={form.category} onChange={set} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field f={CORE_FIELDS[4]} value={form['price']} onChange={set} />
-              <Field f={CORE_FIELDS[5]} value={form['cost']} onChange={set} />
+              <Field f={CORE_FIELDS[4]} value={form.price} onChange={set} />
+              <Field f={CORE_FIELDS[5]} value={form.cost} onChange={set} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field f={CORE_FIELDS[6]} value={form['quantity']} onChange={set} />
-              <Field f={CORE_FIELDS[7]} value={form['lowStockThreshold']} onChange={set} />
+              <Field f={CORE_FIELDS[6]} value={form.quantity} onChange={set} />
+              <Field f={CORE_FIELDS[7]} value={form.lowStockThreshold} onChange={set} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field f={CORE_FIELDS[8]} value={form['aisle']} onChange={set} />
-              <Field f={CORE_FIELDS[9]} value={form['supplier']} onChange={set} />
+              <Field f={CORE_FIELDS[8]} value={form.aisle} onChange={set} />
+              <Field f={CORE_FIELDS[9]} value={form.supplier} onChange={set} />
             </div>
-            <Field f={CORE_FIELDS[10]} value={form['expiry']} onChange={set} />
-            <Field f={CORE_FIELDS[11]} value={form['notes']} onChange={set} />
+            <Field f={CORE_FIELDS[10]} value={form.expiry} onChange={set} />
+            <Field f={CORE_FIELDS[11]} value={form.notes} onChange={set} />
             {customFields.length > 0 && (
               <div style={{ borderTop: '1px solid #2a2a2a', paddingTop: 14 }}>
                 <div style={{ fontSize: 10, color: '#f59e0b', letterSpacing: 2, marginBottom: 12 }}>
@@ -880,18 +1905,7 @@ function FieldManager({ customFields, onSave, onClose, saving }) {
     setErr('');
   };
   const removeField = (id) => {
-    if (window.confirm('Remove field? Existing data is kept but hidden.'))
-      setFields((prev) => prev.filter((f) => f.id !== id));
-  };
-  const iS = {
-    background: '#1a1a1a',
-    border: '1px solid #2d2d2d',
-    borderRadius: 8,
-    padding: '9px 12px',
-    color: '#f3f4f6',
-    fontSize: 13,
-    outline: 'none',
-    fontFamily: 'monospace',
+    if (window.confirm('Remove field?')) setFields((prev) => prev.filter((f) => f.id !== id));
   };
   return (
     <>
@@ -940,7 +1954,7 @@ function FieldManager({ customFields, onSave, onClose, saving }) {
             </button>
           </div>
           <p style={{ color: '#6b7280', fontSize: 12, marginBottom: 20 }}>
-            Add or remove custom fields. They appear on every item form and detail view.
+            Add or remove custom fields.
           </p>
           <div style={{ fontSize: 10, color: '#6b7280', letterSpacing: 2, marginBottom: 8 }}>
             CORE FIELDS (built-in)
@@ -1258,6 +2272,9 @@ function ItemRow({ item, onClick }) {
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
+  const [session, setSession] = useState(() => auth.load());
+  const [user, setUser] = useState(null);
+  const [tenant, setTenant] = useState(null);
   const [items, setItems] = useState([]);
   const [customFields, setCustomFields] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1268,6 +2285,9 @@ export default function App() {
   const [showScanner, setShowScanner] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showFieldMgr, setShowFieldMgr] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showPricing, setShowPricing] = useState(false);
+  const [showReminder, setShowReminder] = useState(true);
   const [editItem, setEditItem] = useState(null);
   const [formInitial, setFormInitial] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
@@ -1276,29 +2296,73 @@ export default function App() {
   const [savingFields, setSavingFields] = useState(false);
   const [toast, setToast] = useState(null);
 
+  const token = session?.access_token;
+  const subStatus = getSubStatus(tenant);
+  const isAdmin = user?.email === ADMIN_EMAIL;
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2800);
   };
 
-  // ── initial load from Supabase ──
+  // ── Boot: load user + tenant + data ──
   useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
-        const [its, flds] = await Promise.all([sb.getItems(), sb.getFields()]);
-        setItems(its);
-        setCustomFields(flds);
+        const u = await auth.getUser(token);
+        setUser(u);
+        let t = await db.getTenant(token, u.id);
+        if (!t)
+          t = await db.createTenant(
+            token,
+            u.id,
+            u.email,
+            u.user_metadata?.business_name || 'My Business',
+          );
+        setTenant(t);
+        const status = getSubStatus(t);
+        if (['active', 'trial'].includes(status)) {
+          const [its, flds] = await Promise.all([
+            db.getItems(token, t.id),
+            db.getFields(token, t.id),
+          ]);
+          setItems(its);
+          setCustomFields(flds);
+        }
       } catch (e) {
-        setDbError('Cannot connect to database. Check your internet connection.');
+        if (e.message.includes('JWT') || e.message.includes('token')) {
+          auth.clear();
+          setSession(null);
+        } else setDbError('Connection error. Please refresh.');
         console.error(e);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [token]);
 
-  // ── save item ──
+  const handleAuth = (sess) => {
+    setSession(sess);
+    setLoading(true);
+  };
+  const handleSignOut = async () => {
+    await auth.signOut(token);
+    auth.clear();
+    setSession(null);
+    setUser(null);
+    setTenant(null);
+    setItems([]);
+    setCustomFields([]);
+  };
+
   const saveItem = async (data) => {
+    if (!canWrite(subStatus)) {
+      showToast('Upgrade your plan to add items', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const itemData = {
@@ -1306,7 +2370,7 @@ export default function App() {
         id: editItem?.id || uid(),
         createdAt: editItem?.createdAt || today(),
       };
-      const saved = await sb.upsertItem(itemData);
+      const saved = await db.upsertItem(token, itemData, tenant.id);
       if (editItem) setItems((prev) => prev.map((i) => (i.id === saved.id ? saved : i)));
       else setItems((prev) => [saved, ...prev]);
       showToast(editItem ? 'Item updated' : 'Item added');
@@ -1321,11 +2385,14 @@ export default function App() {
     }
   };
 
-  // ── delete item ──
   const deleteItem = async (id) => {
+    if (!canWrite(subStatus)) {
+      showToast('Upgrade your plan to delete items', 'error');
+      return;
+    }
     setDeleting(true);
     try {
-      await sb.deleteItem(id);
+      await db.deleteItem(token, id);
       setItems((prev) => prev.filter((i) => i.id !== id));
       setDetailItem(null);
       showToast('Item deleted', 'error');
@@ -1336,22 +2403,20 @@ export default function App() {
     }
   };
 
-  // ── save custom fields ──
   const saveFields = async (fields) => {
     setSavingFields(true);
     try {
-      const saved = await sb.replaceFields(fields);
+      const saved = await db.replaceFields(token, tenant.id, fields);
       setCustomFields(saved);
       setShowFieldMgr(false);
       showToast('Fields saved');
     } catch (e) {
-      showToast('Failed to save fields: ' + e.message, 'error');
+      showToast('Failed: ' + e.message, 'error');
     } finally {
       setSavingFields(false);
     }
   };
 
-  // ── scan handler ──
   const handleScan = (code) => {
     setShowScanner(false);
     const found = items.find((i) => i.sku === code);
@@ -1383,7 +2448,6 @@ export default function App() {
     }
   };
 
-  // ── export ──
   const handleExport = () => {
     const json = JSON.stringify(
       { version: 2, exportedAt: new Date().toISOString(), customFields, items },
@@ -1400,21 +2464,9 @@ export default function App() {
     showToast('Backup downloaded ✓');
   };
 
-  const filtered = items.filter((i) => {
-    const q = search.toLowerCase();
-    return (
-      (!q ||
-        i.name?.toLowerCase().includes(q) ||
-        i.sku?.toLowerCase().includes(q) ||
-        i.supplier?.toLowerCase().includes(q)) &&
-      (filterCat === 'All' || i.category === filterCat)
-    );
-  });
-  const lowStockItems = items.filter((i) => i.quantity <= i.lowStockThreshold && i.quantity > 0);
-  const outOfStock = items.filter((i) => i.quantity === 0);
-  const totalValue = items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 0), 0);
+  // ── screens ──
+  if (!session) return <AuthScreen onAuth={handleAuth} />;
 
-  // ── loading / error screens ──
   if (loading)
     return (
       <div
@@ -1439,8 +2491,8 @@ export default function App() {
         >
           STOCKROOM
         </div>
-        <div style={{ color: '#4b5563', fontSize: 13, fontFamily: 'monospace', letterSpacing: 1 }}>
-          Connecting to database…
+        <div style={{ color: '#4b5563', fontSize: 13, fontFamily: 'monospace' }}>
+          Loading your inventory…
         </div>
         <div
           style={{
@@ -1474,9 +2526,9 @@ export default function App() {
         <div
           style={{
             fontFamily: "'Bebas Neue',sans-serif",
-            fontSize: 32,
+            fontSize: 28,
             color: '#ef4444',
-            letterSpacing: 3,
+            letterSpacing: 2,
           }}
         >
           CONNECTION ERROR
@@ -1514,6 +2566,28 @@ export default function App() {
         </button>
       </div>
     );
+
+  // expired trial or cancelled → force pricing screen
+  if (['expired', 'cancelled'].includes(subStatus))
+    return <PricingScreen tenant={tenant} token={token} expired={true} />;
+
+  // show pricing page
+  if (showPricing)
+    return <PricingScreen tenant={tenant} token={token} onClose={() => setShowPricing(false)} />;
+
+  const filtered = items.filter((i) => {
+    const q = search.toLowerCase();
+    return (
+      (!q ||
+        i.name?.toLowerCase().includes(q) ||
+        i.sku?.toLowerCase().includes(q) ||
+        i.supplier?.toLowerCase().includes(q)) &&
+      (filterCat === 'All' || i.category === filterCat)
+    );
+  });
+  const lowStockItems = items.filter((i) => i.quantity <= i.lowStockThreshold && i.quantity > 0);
+  const outOfStock = items.filter((i) => i.quantity === 0);
+  const totalValue = items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 0), 0);
 
   return (
     <>
@@ -1553,7 +2627,7 @@ export default function App() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: 16,
+              marginBottom: 12,
             }}
           >
             <div>
@@ -1570,7 +2644,7 @@ export default function App() {
               <div
                 style={{
                   fontFamily: "'Bebas Neue',sans-serif",
-                  fontSize: 32,
+                  fontSize: 28,
                   color: '#f3f4f6',
                   letterSpacing: 2,
                   lineHeight: 1,
@@ -1579,42 +2653,105 @@ export default function App() {
                 STOCKROOM
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {/* trial badge */}
+              {subStatus === 'trial' && (
+                <span
+                  onClick={() => setShowPricing(true)}
+                  style={{
+                    padding: '4px 10px',
+                    background: '#0a1628',
+                    border: '1px solid #1e3a5f',
+                    borderRadius: 20,
+                    color: '#38bdf8',
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {trialDaysLeft(tenant)}d trial
+                </span>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => setShowAdmin(true)}
+                  style={{
+                    background: '#1a1200',
+                    border: '1px solid #f59e0b',
+                    borderRadius: 8,
+                    padding: '6px 10px',
+                    color: '#f59e0b',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  ADMIN
+                </button>
+              )}
               <button
                 onClick={() => setShowScanner(true)}
                 style={{
                   background: '#1a1200',
                   border: '1px solid #f59e0b',
                   borderRadius: 10,
-                  padding: '8px 14px',
+                  padding: '7px 12px',
                   color: '#f59e0b',
                   cursor: 'pointer',
-                  fontSize: 18,
+                  fontSize: 16,
                 }}
               >
                 📷
               </button>
-              <button
-                onClick={() => {
-                  setEditItem(null);
-                  setFormInitial(null);
-                  setShowForm(true);
-                }}
-                style={{
-                  background: '#f59e0b',
-                  border: 'none',
-                  borderRadius: 10,
-                  padding: '8px 16px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: "'Bebas Neue',sans-serif",
-                  fontSize: 18,
-                  letterSpacing: 1,
-                }}
-              >
-                + ADD
-              </button>
+              {canWrite(subStatus) && (
+                <button
+                  onClick={() => {
+                    setEditItem(null);
+                    setFormInitial(null);
+                    setShowForm(true);
+                  }}
+                  style={{
+                    background: '#f59e0b',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '7px 14px',
+                    color: '#000',
+                    cursor: 'pointer',
+                    fontFamily: "'Bebas Neue',sans-serif",
+                    fontSize: 16,
+                    letterSpacing: 1,
+                  }}
+                >
+                  + ADD
+                </button>
+              )}
             </div>
+          </div>
+          {/* business name + sign out */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 10,
+            }}
+          >
+            <span style={{ fontSize: 11, color: '#4b5563', fontFamily: 'monospace' }}>
+              {tenant?.business_name || user?.email}
+            </span>
+            <button
+              onClick={handleSignOut}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#4b5563',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontFamily: 'monospace',
+              }}
+            >
+              Sign out
+            </button>
           </div>
           <div style={{ display: 'flex', marginBottom: -1 }}>
             {[
@@ -1692,12 +2829,7 @@ export default function App() {
                     {c.label}
                   </div>
                   <div
-                    style={{
-                      fontFamily: "'Bebas Neue',sans-serif",
-                      fontSize: 28,
-                      color: c.color,
-                      letterSpacing: 1,
-                    }}
+                    style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 28, color: c.color }}
                   >
                     {c.val}
                   </div>
@@ -1750,6 +2882,19 @@ export default function App() {
             <div style={{ fontSize: 11, color: '#6b7280', letterSpacing: 2, marginBottom: 10 }}>
               RECENT ITEMS
             </div>
+            {items.length === 0 && (
+              <div
+                style={{
+                  textAlign: 'center',
+                  color: '#4b5563',
+                  padding: 40,
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                }}
+              >
+                No items yet. Tap + ADD to get started.
+              </div>
+            )}
             {items.slice(0, 5).map((item) => (
               <ItemRow key={item.id} item={item} onClick={() => setDetailItem(item)} />
             ))}
@@ -1839,7 +2984,7 @@ export default function App() {
         {/* Data */}
         {view === 'data' && (
           <div style={{ padding: 16, animation: 'fadeIn .3s ease' }}>
-            {/* DB status */}
+            {/* Subscription status */}
             <div
               style={{
                 background: '#111',
@@ -1850,44 +2995,61 @@ export default function App() {
               }}
             >
               <div style={{ fontSize: 10, color: '#6b7280', letterSpacing: 1, marginBottom: 8 }}>
-                DATABASE
+                SUBSCRIPTION
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ color: '#9ca3af', fontSize: 13 }}>Provider</span>
-                <span style={{ color: '#38bdf8', fontSize: 13, fontFamily: 'monospace' }}>
-                  Supabase
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ color: '#9ca3af', fontSize: 13 }}>Items in DB</span>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>Plan</span>
                 <span
-                  style={{ color: '#4ade80', fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}
+                  style={{
+                    color: '#f59e0b',
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                  }}
                 >
-                  {items.length}
+                  {tenant?.plan || 'trial'}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#9ca3af', fontSize: 13 }}>Custom fields</span>
-                <span style={{ color: '#f59e0b', fontSize: 13, fontFamily: 'monospace' }}>
-                  {customFields.length}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>Status</span>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    color:
+                      subStatus === 'active'
+                        ? '#4ade80'
+                        : subStatus === 'trial'
+                          ? '#38bdf8'
+                          : '#ef4444',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {subStatus === 'trial' ? `Trial (${trialDaysLeft(tenant)} days left)` : subStatus}
                 </span>
               </div>
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: '8px 10px',
-                  background: '#052e16',
-                  border: '1px solid #14532d',
-                  borderRadius: 8,
-                }}
-              >
-                <span style={{ color: '#86efac', fontSize: 11, fontFamily: 'monospace' }}>
-                  ✓ Cloud sync — all devices share the same data
-                </span>
-              </div>
+              {subStatus !== 'active' && (
+                <button
+                  onClick={() => setShowPricing(true)}
+                  style={{
+                    width: '100%',
+                    padding: '11px',
+                    background: '#f59e0b',
+                    border: 'none',
+                    borderRadius: 10,
+                    color: '#000',
+                    cursor: 'pointer',
+                    fontFamily: "'Bebas Neue',sans-serif",
+                    fontSize: 16,
+                    letterSpacing: 1,
+                  }}
+                >
+                  ⚡ UPGRADE NOW
+                </button>
+              )}
             </div>
 
-            {/* Field manager */}
+            {/* Custom fields */}
             <div
               style={{
                 background: '#111',
@@ -1944,7 +3106,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Export */}
+            {/* DB info */}
             <div
               style={{
                 background: '#111',
@@ -1954,11 +3116,52 @@ export default function App() {
                 marginBottom: 12,
               }}
             >
+              <div style={{ fontSize: 10, color: '#6b7280', letterSpacing: 1, marginBottom: 8 }}>
+                DATABASE
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>Provider</span>
+                <span style={{ color: '#38bdf8', fontSize: 13, fontFamily: 'monospace' }}>
+                  Supabase
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>Items stored</span>
+                <span
+                  style={{ color: '#4ade80', fontFamily: "'Bebas Neue',sans-serif", fontSize: 18 }}
+                >
+                  {items.length}
+                </span>
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: '8px 10px',
+                  background: '#052e16',
+                  border: '1px solid #14532d',
+                  borderRadius: 8,
+                }}
+              >
+                <span style={{ color: '#86efac', fontSize: 11, fontFamily: 'monospace' }}>
+                  ✓ Cloud sync — all devices share the same data
+                </span>
+              </div>
+            </div>
+
+            {/* Export */}
+            <div
+              style={{
+                background: '#111',
+                border: '1px solid #1e1e1e',
+                borderRadius: 14,
+                padding: 16,
+              }}
+            >
               <div style={{ fontSize: 10, color: '#6b7280', letterSpacing: 1, marginBottom: 6 }}>
                 EXPORT BACKUP
               </div>
               <p style={{ color: '#6b7280', fontSize: 12, marginBottom: 12, lineHeight: 1.5 }}>
-                Download a full JSON backup of your inventory and custom fields.
+                Download a full JSON backup of your inventory.
               </p>
               <button
                 onClick={handleExport}
@@ -1975,7 +3178,7 @@ export default function App() {
                   letterSpacing: 1,
                 }}
               >
-                ⬇ DOWNLOAD JSON BACKUP
+                ⬇ DOWNLOAD BACKUP
               </button>
             </div>
           </div>
@@ -2025,9 +3228,19 @@ export default function App() {
         </div>
       </div>
 
+      {/* Payment reminder popup */}
+      {showReminder && (
+        <PaymentReminder
+          tenant={tenant}
+          subStatus={subStatus}
+          onUpgrade={() => setShowPricing(true)}
+          onDismiss={() => setShowReminder(false)}
+        />
+      )}
+
       {/* Overlays */}
       {showScanner && <Scanner onDetect={handleScan} onClose={() => setShowScanner(false)} />}
-      {showForm && (
+      {showForm && canWrite(subStatus) && (
         <ItemForm
           title={editItem ? 'EDIT ITEM' : 'NEW ITEM'}
           initial={editItem || formInitial}
@@ -2049,6 +3262,7 @@ export default function App() {
           saving={savingFields}
         />
       )}
+      {showAdmin && isAdmin && <AdminDashboard token={token} onClose={() => setShowAdmin(false)} />}
       {detailItem && !showForm && (
         <ItemDetail
           item={detailItem}
