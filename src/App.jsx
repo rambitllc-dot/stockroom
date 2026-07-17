@@ -59,7 +59,7 @@ function fieldToDb(f) { return { id:f.id, key:f.key, label:f.label, type:f.type,
 function dbToField(row) { return { id:row.id, key:row.key, label:row.label, type:row.type, required:row.required, core:false, sort_order:row.sort_order }; }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const uid   = () => Math.random().toString(36).slice(2, 10);
+const uid   = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16); });
 const today = () => new Date().toISOString().split("T")[0];
 const CATEGORIES = ["Tires", "Other"];
 const CORE_FIELDS = [
