@@ -190,6 +190,7 @@ function ItemForm({ initial, customFields, onSave, onCancel, title, saving }) {
           </div>
           <Field f={CORE_FIELDS[10]} value={form.expiry}             onChange={set}/>
           <Field f={CORE_FIELDS[11]} value={form.notes}              onChange={set}/>
+          <Field f={CORE_FIELDS[12]} value={form.condition}           onChange={set}/>
           {customFields.length>0&&<div style={{borderTop:"1px solid #2a2a2a",paddingTop:14}}>
             <div style={{fontSize:10,color:"#f59e0b",letterSpacing:2,marginBottom:12}}>CUSTOM FIELDS</div>
             <div style={{display:"grid",gap:14}}>{customFields.map(f=><Field key={f.id} f={f} value={form[f.key]} onChange={set}/>)}</div>
