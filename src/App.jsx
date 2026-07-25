@@ -75,6 +75,7 @@ const CORE_FIELDS = [
   { key:"supplier",          label:"Supplier / Brand", type:"text",     required:false, core:true },
   { key:"expiry",            label:"Expiry Date",      type:"date",     required:false, core:true },
   { key:"notes",             label:"Notes",            type:"textarea", required:false, core:true },
+  { key:"condition",         label:"Condition",        type:"condition", required:false, core:true },
 ];
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -140,6 +141,15 @@ function Field({ f, value, onChange }) {
         ? <textarea value={value||""} onChange={e=>onChange(f.key,e.target.value)} rows={3} style={{...iS,resize:"vertical"}} onFocus={handleFocus} onBlur={handleBlur}/>
         : f.type==="select"
         ? <select value={value||"Tires"} onChange={e=>onChange(f.key,e.target.value)} style={iS}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+        : f.type==="condition"
+        ? <div style={{display:"flex",gap:8}}>
+            {["New","Used"].map(opt=>(
+              <button key={opt} type="button" onClick={()=>onChange(f.key,opt)}
+                style={{flex:1,padding:"10px",borderRadius:8,border:`2px solid ${(value||"New")===opt?(opt==="Used"?"#7c3aed":"#4ade80"):"#2d2d2d"}`,background:(value||"New")===opt?(opt==="Used"?"#2e1065":"#052e16"):"#1a1a1a",color:(value||"New")===opt?(opt==="Used"?"#a78bfa":"#4ade80"):"#6b7280",cursor:"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>
+                {opt==="New"?"✓ NEW":"⚠ USED"}
+              </button>
+            ))}
+          </div>
         : <input type={f.type} value={value||""} onChange={e=>onChange(f.key,e.target.value)} style={iS} onFocus={handleFocus} onBlur={handleBlur}/>}
     </div>
   );
@@ -195,7 +205,7 @@ function ItemForm({ initial, customFields, onSave, onCancel, title, saving }) {
 }
 
 // ── Item Detail ───────────────────────────────────────────────────────────────
-function ItemDetail({ item, customFields, onClose, onEdit, onDelete, deleting }) {
+function ItemDetail({ item, customFields, onClose, onEdit, onDelete, deleting, onPrint }) {
   const isLow=item.quantity<=item.lowStockThreshold,isOut=item.quantity===0;
   const margin=item.price&&item.cost?(((item.price-item.cost)/item.price)*100).toFixed(1):null;
   const Row=({label,val,accent})=>(val!=null&&val!=="")?(<div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1e1e1e"}}><span style={{color:"#6b7280",fontSize:13,fontFamily:"monospace"}}>{label}</span><span style={{color:accent||"#f3f4f6",fontSize:13,fontFamily:"monospace",textAlign:"right",maxWidth:"60%"}}>{val}</span></div>):null;
@@ -214,6 +224,7 @@ function ItemDetail({ item, customFields, onClose, onEdit, onDelete, deleting })
           </div>
           <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
             <span style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontFamily:"monospace",fontWeight:700,background:isOut?"#3b0000":isLow?"#451a03":"#052e16",color:isOut?"#ef4444":isLow?"#f59e0b":"#4ade80",border:`1px solid ${isOut?"#7f1d1d":isLow?"#92400e":"#14532d"}`}}>{isOut?"⛔ OUT OF STOCK":isLow?"⚠ LOW STOCK":"✓ IN STOCK"} — {item.quantity} units</span>
+            {item.condition&&<span style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontFamily:"monospace",fontWeight:700,background:item.condition==="Used"?"#2e1065":"#052e16",color:item.condition==="Used"?"#a78bfa":"#4ade80",border:item.condition==="Used"?"1px solid #7c3aed":"1px solid #14532d"}}>{item.condition==="Used"?"⚠ USED TIRE":"✓ NEW TIRE"}</span>}
             {margin&&<span style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontFamily:"monospace",background:"#0f172a",color:"#38bdf8",border:"1px solid #1e3a5f"}}>MARGIN {margin}%</span>}
           </div>
         </div>
@@ -230,6 +241,7 @@ function ItemDetail({ item, customFields, onClose, onEdit, onDelete, deleting })
         </div>
         <div style={{display:"flex",gap:10,padding:24}}>
           <button onClick={()=>{if(window.confirm("Delete this item?"))onDelete(item.id);}} disabled={deleting} style={{padding:"11px 16px",background:"#1a0000",border:"1px solid #7f1d1d",borderRadius:10,color:"#ef4444",cursor:deleting?"not-allowed":"pointer",fontSize:13}}>{deleting?"…":"🗑 Delete"}</button>
+          {item.condition==="Used"&&<button onClick={()=>onPrint(item)} style={{padding:"11px 14px",background:"#2e1065",border:"1px solid #7c3aed",borderRadius:10,color:"#a78bfa",cursor:"pointer",fontSize:13}}>🖨 Label</button>}
           <button onClick={()=>onEdit(item)} style={{flex:1,padding:"11px",background:"#f59e0b",border:"none",borderRadius:10,color:"#000",cursor:"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>EDIT ITEM</button>
         </div>
       </div>
@@ -296,6 +308,7 @@ function ItemRow({ item, onClick }) {
           <span style={{color:"#f3f4f6",fontSize:14,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</span>
           {isOut&&<span style={{fontSize:9,padding:"2px 6px",background:"#3b0000",color:"#ef4444",borderRadius:4,flexShrink:0}}>OUT</span>}
           {!isOut&&isLow&&<span style={{fontSize:9,padding:"2px 6px",background:"#451a03",color:"#f59e0b",borderRadius:4,flexShrink:0}}>LOW</span>}
+          {item.condition==="Used"&&<span style={{fontSize:9,padding:"2px 6px",background:"#2e1065",color:"#a78bfa",borderRadius:4,flexShrink:0}}>USED</span>}
         </div>
         <div style={{fontSize:11,color:"#4b5563"}}>{item.category}{item.sku?` · ${item.sku}`:""}{item.aisle?` · ${item.aisle}`:""}</div>
       </div>
@@ -307,6 +320,50 @@ function ItemRow({ item, onClick }) {
   );
 }
 
+
+// ── Print Label ───────────────────────────────────────────────────────────────
+function PrintLabel({ item, onClose }) {
+  const handlePrint = () => window.print();
+  return(<>
+    <Backdrop onClick={onClose}/>
+    <div style={{position:"fixed",inset:0,zIndex:80,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#111",border:"1px solid #2a2a2a",borderRadius:20,padding:24,maxWidth:360,width:"100%",boxShadow:"0 25px 60px rgba(0,0,0,.8)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#f59e0b",letterSpacing:2}}>TIRE LABEL PREVIEW</span>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"#6b7280",fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+
+        {/* Label preview */}
+        <div id="print-label" style={{background:"#fff",borderRadius:12,padding:20,color:"#000",fontFamily:"monospace"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,borderBottom:"2px solid #000",paddingBottom:10}}>
+            <div>
+              <div style={{fontSize:10,letterSpacing:2,color:"#666",marginBottom:2}}>USED TIRE</div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,lineHeight:1,color:"#000"}}>{item.name}</div>
+            </div>
+            <div style={{background:"#000",color:"#fff",padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:"bold"}}>USADO</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+            {item["aro_r"]&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>ARO (RIM)</div><div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",color:"#000"}}>R{item["aro_r"]}</div></div>}
+            {item.quantity!=null&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>QTY</div><div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",color:"#000"}}>{item.quantity}</div></div>}
+            {item.price&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>PRICE</div><div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",color:"#000"}}>${item.price}</div></div>}
+            {item.supplier&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>BRAND</div><div style={{fontSize:14,fontWeight:"bold",color:"#000",marginTop:4}}>{item.supplier}</div></div>}
+          </div>
+          {item.sku&&<div style={{borderTop:"1px solid #ccc",paddingTop:8,fontSize:11,color:"#666"}}>SKU: {item.sku}</div>}
+          {item.aisle&&<div style={{fontSize:11,color:"#666"}}>LOCATION: {item.aisle}</div>}
+          {item.description&&<div style={{fontSize:11,color:"#444",marginTop:4,fontStyle:"italic"}}>{item.description}</div>}
+        </div>
+
+        <style>{`@media print{body *{visibility:hidden;}#print-label,#print-label *{visibility:visible;}#print-label{position:fixed;top:20px;left:20px;right:20px;border-radius:0;}}`}</style>
+
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          <button onClick={onClose} style={{flex:1,padding:"11px",background:"#1a1a1a",border:"1px solid #2d2d2d",borderRadius:10,color:"#9ca3af",cursor:"pointer",fontSize:14}}>Cancel</button>
+          <button onClick={handlePrint} style={{flex:2,padding:"11px",background:"#f59e0b",border:"none",borderRadius:10,color:"#000",cursor:"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1}}>🖨 PRINT LABEL</button>
+        </div>
+      </div>
+    </div>
+  </>);
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [items,setItems]               = useState([]);
@@ -316,6 +373,9 @@ export default function App() {
   const [view,setView]                 = useState("dashboard");
   const [search,setSearch]             = useState("");
   const [filterCat,setFilterCat]       = useState("All");
+  const [filterRim,setFilterRim]       = useState("All");
+  const [filterCond,setFilterCond]     = useState("All");
+  const [showPrintLabel,setShowPrintLabel] = useState(null);
   const [showScanner,setShowScanner]   = useState(false);
   const [showForm,setShowForm]         = useState(false);
   const [showFieldMgr,setShowFieldMgr] = useState(false);
@@ -398,7 +458,8 @@ export default function App() {
   };
 
   // ── Stats ──
-  const filtered     = items.filter(i=>{ const q=search.toLowerCase(); return(!q||i.name?.toLowerCase().includes(q)||i.sku?.toLowerCase().includes(q)||i.supplier?.toLowerCase().includes(q))&&(filterCat==="All"||i.category===filterCat); });
+  const rimSizes     = ["All",...new Set(items.map(i=>i["aro_r"]).filter(Boolean)).values()].sort((a,b)=>a>b?1:-1);
+  const filtered     = items.filter(i=>{ const q=search.toLowerCase(); return(!q||i.name?.toLowerCase().includes(q)||i.sku?.toLowerCase().includes(q)||i.supplier?.toLowerCase().includes(q))&&(filterCat==="All"||i.category===filterCat)&&(filterRim==="All"||i["aro_r"]===filterRim)&&(filterCond==="All"||i.condition===filterCond); });
   const lowStockItems = items.filter(i=>i.quantity<=i.lowStockThreshold&&i.quantity>0);
   const outOfStock   = items.filter(i=>i.quantity===0);
   const totalValue   = items.reduce((s,i)=>s+(i.price||0)*(i.quantity||0),0);
@@ -499,9 +560,27 @@ export default function App() {
         {view==="list"&&(
           <div style={{padding:16,animation:"fadeIn .3s ease"}}>
             <input placeholder="🔍  Search name, SKU, supplier…" value={search} onChange={e=>setSearch(e.target.value)} style={{width:"100%",background:"#111",border:"1px solid #2d2d2d",borderRadius:10,padding:"11px 14px",color:"#f3f4f6",fontSize:13,outline:"none",marginBottom:10,fontFamily:"monospace"}}/>
-            <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:12}}>
+            
+            {/* Category filter */}
+            <div style={{fontSize:9,color:"#4b5563",letterSpacing:1,fontFamily:"monospace",marginBottom:4}}>CATEGORY</div>
+            <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,marginBottom:10}}>
               {["All",...CATEGORIES].map(c=><button key={c} onClick={()=>setFilterCat(c)} style={{whiteSpace:"nowrap",padding:"5px 14px",background:filterCat===c?"#f59e0b":"#161616",border:"1px solid "+(filterCat===c?"#f59e0b":"#2d2d2d"),borderRadius:20,color:filterCat===c?"#000":"#9ca3af",cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>{c}</button>)}
             </div>
+
+            {/* Condition filter */}
+            <div style={{fontSize:9,color:"#4b5563",letterSpacing:1,fontFamily:"monospace",marginBottom:4}}>CONDITION</div>
+            <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,marginBottom:10}}>
+              {["All","New","Used"].map(c=><button key={c} onClick={()=>setFilterCond(c)} style={{whiteSpace:"nowrap",padding:"5px 14px",background:filterCond===c?(c==="Used"?"#7c3aed":"#f59e0b"):"#161616",border:"1px solid "+(filterCond===c?(c==="Used"?"#7c3aed":"#f59e0b"):"#2d2d2d"),borderRadius:20,color:filterCond===c?"#fff":"#9ca3af",cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>{c}</button>)}
+            </div>
+
+            {/* Rim size filter */}
+            {rimSizes.length>1&&<>
+              <div style={{fontSize:9,color:"#4b5563",letterSpacing:1,fontFamily:"monospace",marginBottom:4}}>RIM SIZE (ARO)</div>
+              <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:12}}>
+                {rimSizes.map(r=><button key={r} onClick={()=>setFilterRim(r)} style={{whiteSpace:"nowrap",padding:"5px 14px",background:filterRim===r?"#38bdf8":"#161616",border:"1px solid "+(filterRim===r?"#38bdf8":"#2d2d2d"),borderRadius:20,color:filterRim===r?"#000":"#9ca3af",cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>{r==="All"?"All":"R"+r}</button>)}
+              </div>
+            </>}
+
             {filtered.length===0&&<div style={{textAlign:"center",color:"#4b5563",padding:40,fontSize:13}}>No items found</div>}
             {filtered.map((item,i)=><div key={item.id} className="item-card" style={{animationDelay:`${i*.04}s`}}><ItemRow item={item} onClick={()=>setDetailItem(item)}/></div>)}
           </div>
@@ -545,10 +624,11 @@ export default function App() {
       </div>
 
       {/* Overlays */}
+      {showPrintLabel&&<PrintLabel item={showPrintLabel} onClose={()=>setShowPrintLabel(null)}/> }
       {showScanner&&<Scanner onDetect={handleScan} onClose={()=>setShowScanner(false)}/>}
       {showForm&&<ItemForm title={editItem?"EDIT ITEM":"NEW ITEM"} initial={editItem||formInitial} customFields={customFields} onSave={saveItem} onCancel={()=>{setShowForm(false);setEditItem(null);setFormInitial(null);}} saving={saving}/>}
       {showFieldMgr&&<FieldManager customFields={customFields} onSave={saveFields} onClose={()=>setShowFieldMgr(false)} saving={savingFields}/>}
-      {detailItem&&!showForm&&<ItemDetail item={detailItem} customFields={customFields} onClose={()=>setDetailItem(null)} onEdit={item=>{setEditItem(item);setDetailItem(null);setShowForm(true);}} onDelete={deleteItem} deleting={deleting}/>}
+      {detailItem&&!showForm&&<ItemDetail item={detailItem} customFields={customFields} onClose={()=>setDetailItem(null)} onEdit={item=>{setEditItem(item);setDetailItem(null);setShowForm(true);}} onDelete={deleteItem} deleting={deleting} onPrint={item=>{setDetailItem(null);setShowPrintLabel(item);}}/>}
 
       {/* Toast */}
       {toast&&<div style={{position:"fixed",bottom:90,left:"50%",transform:"translateX(-50%)",background:toast.type==="error"?"#1a0000":toast.type==="info"?"#0a1628":"#052e16",border:`1px solid ${toast.type==="error"?"#7f1d1d":toast.type==="info"?"#1e3a5f":"#14532d"}`,color:toast.type==="error"?"#fca5a5":toast.type==="info"?"#7dd3fc":"#86efac",borderRadius:12,padding:"10px 20px",fontSize:13,fontFamily:"monospace",whiteSpace:"nowrap",zIndex:200,animation:"slideUp .2s ease"}}>{toast.msg}</div>}
