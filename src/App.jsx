@@ -344,7 +344,7 @@ function PrintLabel({ item, onClose }) {
             <div style={{background:"#000",color:"#fff",padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:"bold"}}>USADO</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-            {item["aro_r"]&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>ARO (RIM)</div><div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",color:"#000"}}>R{item["aro_r"]}</div></div>}
+            {item["aro__r_"]&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>ARO (RIM)</div><div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",color:"#000"}}>R{item["aro__r_"]}</div></div>}
             {item.quantity!=null&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>QTY</div><div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",color:"#000"}}>{item.quantity}</div></div>}
             {item.price&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>PRICE</div><div style={{fontSize:22,fontFamily:"'Bebas Neue',sans-serif",color:"#000"}}>${item.price}</div></div>}
             {item.supplier&&<div><div style={{fontSize:9,color:"#666",letterSpacing:1}}>BRAND</div><div style={{fontSize:14,fontWeight:"bold",color:"#000",marginTop:4}}>{item.supplier}</div></div>}
@@ -459,8 +459,8 @@ export default function App() {
   };
 
   // ── Stats ──
-  const rimSizes     = ["All",...new Set(items.map(i=>i["aro_r"]).filter(Boolean)).values()].sort((a,b)=>a>b?1:-1);
-  const filtered     = items.filter(i=>{ const q=search.toLowerCase(); return(!q||i.name?.toLowerCase().includes(q)||i.sku?.toLowerCase().includes(q)||i.supplier?.toLowerCase().includes(q))&&(filterCat==="All"||i.category===filterCat)&&(filterRim==="All"||i["aro_r"]===filterRim)&&(filterCond==="All"||i.condition===filterCond); });
+  const rimSizes     = ["All",...new Set(items.map(i=>i["aro__r_"]).filter(Boolean)).values()].sort((a,b)=>a>b?1:-1);
+  const filtered     = items.filter(i=>{ const q=search.toLowerCase(); return(!q||i.name?.toLowerCase().includes(q)||i.sku?.toLowerCase().includes(q)||i.supplier?.toLowerCase().includes(q))&&(filterCat==="All"||i.category===filterCat)&&(filterRim==="All"||i["aro__r_"]===filterRim)&&(filterCond==="All"||i.condition===filterCond); });
   const lowStockItems = items.filter(i=>i.quantity<=i.lowStockThreshold&&i.quantity>0);
   const outOfStock   = items.filter(i=>i.quantity===0);
   const totalValue   = items.reduce((s,i)=>s+(i.price||0)*(i.quantity||0),0);
