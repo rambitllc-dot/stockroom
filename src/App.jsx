@@ -80,7 +80,7 @@ const CORE_FIELDS = [
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const Backdrop = ({ onClick }) => (
-  <div onClick={onClick} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.7)",backdropFilter:"blur(3px)",zIndex:50 }} />
+  <div onClick={onClick} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:50 }} />
 );
 const iS = { background:"#1a1a1a",border:"1px solid #2d2d2d",borderRadius:8,padding:"10px 12px",color:"#f3f4f6",fontSize:14,outline:"none",fontFamily:"monospace",width:"100%",transition:"border-color .2s" };
 const lS = { fontSize:11,color:"#9ca3af",textTransform:"uppercase",letterSpacing:1,fontFamily:"monospace",marginBottom:4,display:"block" };
