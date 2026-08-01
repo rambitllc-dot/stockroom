@@ -365,6 +365,25 @@ function PrintLabel({ item, onClose }) {
   </>);
 }
 
+
+// ── Filter Summary ────────────────────────────────────────────────────────────
+function FilterSummary({ items }) {
+  if (!items || items.length === 0) return null;
+  const totalQ = items.reduce((s, i) => s + (i.quantity || 0), 0);
+  return (
+    <div style={{background:"#111",border:"1px solid #2a2a2a",borderRadius:14,padding:"14px 16px",marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div>
+        <div style={{fontSize:10,color:"#6b7280",letterSpacing:1,fontFamily:"monospace",marginBottom:2}}>FILTERED RESULTS</div>
+        <div style={{fontSize:12,color:"#9ca3af",fontFamily:"monospace"}}>{items.length} product{items.length!==1?"s":""}</div>
+      </div>
+      <div style={{textAlign:"right"}}>
+        <div style={{fontSize:10,color:"#6b7280",letterSpacing:1,fontFamily:"monospace",marginBottom:2}}>TOTAL TIRES</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#f59e0b",letterSpacing:1}}>{totalQ.toLocaleString()}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [items,setItems]               = useState([]);
@@ -584,18 +603,7 @@ export default function App() {
 
             {filtered.length===0&&<div style={{textAlign:"center",color:"#4b5563",padding:40,fontSize:13}}>No items found</div>}
             {filtered.map((item,i)=><div key={item.id} className="item-card" style={{animationDelay:`${i*.04}s`}}><ItemRow item={item} onClick={()=>setDetailItem(item)}/></div>)}
-            {filtered.length>0&&(()=>{const totalQ=filtered.reduce((s,i)=>s+(i.quantity||0),0);return(
-              <div style={{background:"#111",border:"1px solid #2a2a2a",borderRadius:14,padding:"14px 16px",marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:10,color:"#6b7280",letterSpacing:1,fontFamily:"monospace",marginBottom:2}}>FILTERED RESULTS</div>
-                  <div style={{fontSize:12,color:"#9ca3af",fontFamily:"monospace"}}>{filtered.length} product{filtered.length!==1?"s":""}</div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:10,color:"#6b7280",letterSpacing:1,fontFamily:"monospace",marginBottom:2}}>TOTAL TIRES</div>
-                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#f59e0b",letterSpacing:1}}>{totalQ.toLocaleString()}</div>
-                </div>
-              </div>
-            );})()}
+            <FilterSummary items={filtered}/>
           </div>
         )}
 
