@@ -378,7 +378,7 @@ function FilterSummary({ items }) {
       </div>
       <div style={{textAlign:"right"}}>
         <div style={{fontSize:10,color:"#6b7280",letterSpacing:1,fontFamily:"monospace",marginBottom:2}}>TOTAL TIRES</div>
-        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#f59e0b",letterSpacing:1}}>{totalQ.toLocaleString()}</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#f59e0b",letterSpacing:1}}>{totalQ}</div>
       </div>
     </div>
   );
