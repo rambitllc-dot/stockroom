@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 // ── Supabase config ───────────────────────────────────────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://vugqkfdweyhdtvovvnci.supabase.co";
@@ -384,6 +384,22 @@ function FilterSummary({ items }) {
   );
 }
 
+
+// ── Error Boundary ────────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e.message }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{padding:20,background:"#130000",border:"1px solid #7f1d1d",borderRadius:12,margin:16,color:"#fca5a5",fontSize:12,fontFamily:"monospace",wordBreak:"break-all"}}>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#ef4444",marginBottom:8}}>RENDER ERROR</div>
+        {this.state.error}
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [items,setItems]               = useState([]);
@@ -602,7 +618,7 @@ export default function App() {
             </>}
 
             {filtered.length===0&&<div style={{textAlign:"center",color:"#4b5563",padding:40,fontSize:13}}>No items found</div>}
-            {filtered.map((item,i)=><div key={item.id} className="item-card" style={{animationDelay:`${i*.04}s`}}><ItemRow item={item} onClick={()=>setDetailItem(item)}/></div>)}
+            {filtered.map((item,i)=><ErrorBoundary key={item.id}><div className="item-card" style={{animationDelay:`${i*.04}s`}}><ItemRow item={item} onClick={()=>setDetailItem(item)}/></div></ErrorBoundary>)}
             <FilterSummary items={filtered}/>
           </div>
         )}
