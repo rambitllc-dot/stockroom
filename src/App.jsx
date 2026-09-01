@@ -160,7 +160,15 @@ function ItemForm({ initial, customFields, onSave, onCancel, title, saving }) {
   const blank = () => { const b={name:"",description:"",sku:"",price:"",cost:"",quantity:"",lowStockThreshold:"10",category:"Tires",aisle:"",supplier:"",expiry:"",notes:""}; customFields.forEach(f=>{b[f.key]="";}); return b; };
   const [form,setForm] = useState(initial||blank());
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const handleSave = () => { if(!form.name||!form.quantity) return; onSave({...form,price:parseFloat(form.price)||0,cost:parseFloat(form.cost)||0,quantity:parseInt(form.quantity)||0,lowStockThreshold:parseInt(form.lowStockThreshold)||0}); };
+  const [formErr, setFormErr] = useState("");
+  const handleSave = () => {
+    if (!form.name) { setFormErr("Product Name is required."); return; }
+    if (!form.quantity) { setFormErr("Quantity is required."); return; }
+    if (!form["aro__r_"]) { setFormErr("Rim Size (Aro) is required."); return; }
+    if (!form.condition) { setFormErr("Condition (New / Used) is required."); return; }
+    setFormErr("");
+    onSave({...form, price:parseFloat(form.price)||0, cost:parseFloat(form.cost)||0, quantity:parseInt(form.quantity)||0, lowStockThreshold:parseInt(form.lowStockThreshold)||0});
+  };
   return(<>
     <Backdrop onClick={onCancel}/>
     <div style={{position:"fixed",inset:0,zIndex:60,overflowY:"auto",padding:"16px"}}>
@@ -196,7 +204,8 @@ function ItemForm({ initial, customFields, onSave, onCancel, title, saving }) {
             <div style={{display:"grid",gap:14}}>{customFields.map(f=><Field key={f.id} f={f} value={form[f.key]} onChange={set}/>)}</div>
           </div>}
         </div>
-        <div style={{display:"flex",gap:10,marginTop:24}}>
+        {formErr&&<div style={{marginTop:14,padding:"10px 14px",background:"#130000",border:"1px solid #7f1d1d",borderRadius:8,color:"#fca5a5",fontSize:12,fontFamily:"monospace"}}>⚠ {formErr}</div>}
+        <div style={{display:"flex",gap:10,marginTop:12}}>
           <button onClick={onCancel} style={{flex:1,padding:"12px",background:"#1a1a1a",border:"1px solid #2d2d2d",borderRadius:10,color:"#9ca3af",cursor:"pointer",fontSize:14}}>Cancel</button>
           <button onClick={handleSave} disabled={saving} style={{flex:2,padding:"12px",background:saving?"#92400e":"#f59e0b",border:"none",borderRadius:10,color:"#000",cursor:saving?"not-allowed":"pointer",fontSize:14,fontWeight:700,fontFamily:"'Bebas Neue',sans-serif",letterSpacing:1}}>{saving?"SAVING…":"SAVE ITEM"}</button>
         </div>
